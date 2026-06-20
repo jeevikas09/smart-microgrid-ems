@@ -465,7 +465,7 @@ footer p { font-size: 11px; color: var(--text3); font-family: var(--mono); }
 <!-- POWER FLOW DIAGRAM -->
 <div class="flow-panel">
   <div class="panel-title">Real-time power flow</div>
-  <div class="flow-canvas-wrap">
+  <div class="flow-canvas-wrap" style="height:260px">
     <canvas id="flowCanvas" class="flow-canvas" role="img" aria-label="Power flow diagram between sources and DC bus"></canvas>
   </div>
 </div>
@@ -770,19 +770,27 @@ function drawFlow(ctx, ppv, pw, load, pbat, pgrid, soc){
 
   Object.values(nodes).forEach(n=>{
     ctx.beginPath();
-    ctx.arc(n.x,n.y,28,0,Math.PI*2);
+    ctx.arc(n.x,n.y,36,0,Math.PI*2);
     ctx.fillStyle='#0f1729';
     ctx.fill();
     ctx.strokeStyle=n.color;
-    ctx.lineWidth=1.5;
+    ctx.lineWidth=2;
+    ctx.stroke();
+    // glow ring
+    ctx.beginPath();
+    ctx.arc(n.x,n.y,38,0,Math.PI*2);
+    ctx.strokeStyle=n.color.replace(')',',0.2)').replace('#','rgba(');
+    ctx.lineWidth=6;
     ctx.stroke();
     ctx.fillStyle=n.color;
-    ctx.font='500 10px Inter';
+    ctx.font='600 12px Inter';
     ctx.textAlign='center';
-    ctx.fillText(n.label,n.x,n.y-4);
-    ctx.font='10px JetBrains Mono';
-    ctx.fillStyle='#94a3b8';
-    ctx.fillText(n.val,n.x,n.y+10);
+    ctx.textBaseline='middle';
+    ctx.fillText(n.label,n.x,n.y-8);
+    ctx.font='11px JetBrains Mono';
+    ctx.fillStyle='#cbd5e1';
+    ctx.fillText(n.val,n.x,n.y+9);
+    ctx.textBaseline='alphabetic';
   });
 }
 
