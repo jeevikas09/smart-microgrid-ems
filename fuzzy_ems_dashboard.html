@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fuzzy Logic EMS — DC Microgrid | KARE</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg:       #0a0f1e;
+  --bg2:      #0f1729;
+  --bg3:      #151e35;
+  --bg4:      #1a2540;
+  --border:   rgba(99,179,237,0.12);
+  --border2:  rgba(99,179,237,0.22);
+  --solar:    #f6ad55;
+  --wind:     #63b3ed;
+  --load:     #fc8181;
+  --bat:      #68d391;
+  --grid:     #b794f4;
+  --accent:   #4facfe;
+  --accent2:  #00f2fe;
+  --text:     #e2e8f0;
+  --text2:    #94a3b8;
+  --text3:    #64748b;
+  --success:  #68d391;
+  --warn:     #f6ad55;
+  --danger:   #fc8181;
+  --info:     #63b3ed;
+  --mono:     'JetBrains Mono', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── GRID BG ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(79,172,254,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79,172,254,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── GLOW ORBS ── */
+.orb1, .orb2 {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: 0;
+}
+.orb1 { width: 600px; height: 600px; background: rgba(79,172,254,0.07); top: -200px; right: -200px; }
+.orb2 { width: 500px; height: 500px; background: rgba(104,211,145,0.05); bottom: -150px; left: -150px; }
+
+/* ── LAYOUT ── */
+.wrapper { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 0 20px 40px; }
+
+/* ── HEADER ── */
+header {
+  padding: 24px 0 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.header-left h1 {
+  font-size: clamp(18px, 3vw, 26px);
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.2;
+  margin-bottom: 6px;
+}
+.header-left p { font-size: 13px; color: var(--text2); }
+.header-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+.badge {
+  font-size: 11px;
+  font-family: var(--mono);
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  background: var(--bg3);
+  white-space: nowrap;
+}
+.badge.live { border-color: rgba(104,211,145,0.4); color: var(--success); background: rgba(104,211,145,0.07); }
+.badge.live::before { content: '●  '; font-size: 8px; animation: blink 1.4s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+/* ── TIME CONTROL ── */
+.time-control {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.time-top { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+.time-display {
+  font-family: var(--mono);
+  font-size: 32px;
+  font-weight: 500;
+  color: var(--accent);
+  min-width: 100px;
+}
+.time-desc { font-size: 13px; color: var(--text2); flex: 1; }
+.ctrl-btns { display: flex; gap: 8px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border2);
+  background: var(--bg3);
+  color: var(--text);
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--bg4); border-color: var(--accent); color: var(--accent); }
+.btn.play-active { background: rgba(79,172,254,0.15); border-color: var(--accent); color: var(--accent); }
+.btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+/* speed selector */
+select.speed-sel {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+  border-radius: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  appearance: none;
+}
+
+/* slider */
+.slider-row { display: flex; align-items: center; gap: 12px; }
+.slider-label { font-size: 11px; color: var(--text3); font-family: var(--mono); min-width: 40px; }
+input[type=range] {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--accent) var(--pct,33%), rgba(99,179,237,0.15) var(--pct,33%));
+  outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 8px rgba(79,172,254,0.5);
+  cursor: pointer;
+}
+
+/* ── MODE BANNER ── */
+.mode-banner {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  transition: all 0.4s;
+}
+.mode-tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+/* ── METRICS ── */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.metric-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.3s;
+}
+.metric-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--mc-color, var(--accent));
+  opacity: 0.6;
+}
+.metric-card:hover { border-color: var(--border2); }
+.metric-icon {
+  font-size: 18px;
+  margin-bottom: 8px;
+  display: block;
+}
+.metric-label {
+  font-size: 10px;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+  font-family: var(--mono);
+}
+.metric-value {
+  font-size: 22px;
+  font-weight: 600;
+  font-family: var(--mono);
+  color: var(--mc-color, var(--text));
+  line-height: 1;
+}
+.metric-unit { font-size: 11px; color: var(--text3); margin-top: 2px; }
+.metric-bar { margin-top: 8px; height: 3px; background: rgba(255,255,255,0.07); border-radius: 2px; overflow: hidden; }
+.metric-bar-fill { height: 100%; border-radius: 2px; background: var(--mc-color, var(--accent)); transition: width 0.5s; }
+
+/* ── CHARTS ── */
+.charts-main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.charts-sub {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.chart-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+.chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 8px; flex-wrap: wrap; }
+.chart-title { font-size: 12px; color: var(--text2); font-weight: 500; }
+.chart-legend { display: flex; gap: 10px; flex-wrap: wrap; }
+.leg { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--text3); font-family: var(--mono); }
+.leg-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.leg-dash { width: 14px; height: 2px; border-top: 2px dashed; flex-shrink: 0; }
+
+/* ── BOTTOM GRID ── */
+.bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+/* ── FLC PANEL ── */
+.flc-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+.panel-title { font-size: 12px; color: var(--text2); font-weight: 500; margin-bottom: 12px; }
+.rule-list { display: flex; flex-direction: column; gap: 5px; max-height: 280px; overflow-y: auto; }
+.rule-list::-webkit-scrollbar { width: 4px; }
+.rule-list::-webkit-scrollbar-track { background: transparent; }
+.rule-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+.rule-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: all 0.35s;
+  cursor: default;
+}
+.rule-item.fired {
+  border-color: rgba(79,172,254,0.35);
+  background: rgba(79,172,254,0.08);
+}
+.rule-num {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  min-width: 24px;
+  margin-top: 1px;
+}
+.rule-text { font-size: 11px; color: var(--text2); line-height: 1.4; }
+.rule-item.fired .rule-text { color: var(--accent); }
+.rule-out { font-family: var(--mono); font-size: 10px; margin-top: 2px; }
+.fire-bar { height: 2px; border-radius: 1px; background: var(--accent); margin-top: 3px; transition: width 0.35s; }
+
+/* ── MF PANEL ── */
+.mf-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+.mf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mf-chart-wrap { position: relative; height: 100px; }
+
+/* ── POWER FLOW ── */
+.flow-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+.flow-canvas-wrap { position: relative; height: 180px; }
+canvas.flow-canvas { width: 100%; height: 100%; }
+
+/* ── FOOTER ── */
+footer {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+footer p { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+.kare-tag { font-size: 11px; color: var(--text3); }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 900px) {
+  .charts-main, .bottom-grid { grid-template-columns: 1fr; }
+  .charts-sub { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 600px) {
+  .charts-sub { grid-template-columns: 1fr; }
+  .metrics-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="orb1"></div>
+<div class="orb2"></div>
+<div class="wrapper">
+
+<!-- HEADER -->
+<header>
+  <div class="header-left">
+    <h1>Fuzzy Logic Energy Management System</h1>
+    <p>Residential DC Microgrid · Mamdani FIS · 4 Inputs · 18 Rules · Real-Time Simulation</p>
+  </div>
+  <div class="header-badges">
+    <span class="badge live">Simulation Running</span>
+    <span class="badge">KARE / EEE · 2025–26</span>
+    <span class="badge">MATLAB / Simulink Validated</span>
+    <span class="badge">ESP32 Embedded</span>
+  </div>
+</header>
+
+<!-- TIME CONTROL -->
+<div class="time-control">
+  <div class="time-top">
+    <div class="time-display" id="timeDisp">08:00</div>
+    <div class="time-desc" id="timeDesc">Morning — solar ramp-up, wind moderate</div>
+    <div class="ctrl-btns">
+      <button class="btn" id="btnPlay" onclick="togglePlay()">
+        <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        <span id="playLabel">Play</span>
+      </button>
+      <button class="btn" onclick="resetSim()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        Reset
+      </button>
+      <select class="speed-sel" id="speedSel">
+        <option value="800">0.5×</option>
+        <option value="500" selected>1×</option>
+        <option value="250">2×</option>
+        <option value="100">4×</option>
+      </select>
+    </div>
+  </div>
+  <div class="slider-row">
+    <span class="slider-label">00:00</span>
+    <input type="range" id="timeSlider" min="0" max="23" value="8" step="1" oninput="setHour(+this.value)">
+    <span class="slider-label" style="text-align:right">23:00</span>
+  </div>
+  <div class="mode-banner" id="modeBanner">
+    <span style="font-size:12px;color:var(--text2)">EMS Decision →</span>
+    <span class="mode-tag" id="mBat">Battery: —</span>
+    <span class="mode-tag" id="mGrid">Grid: —</span>
+    <span style="font-size:12px;color:var(--text3);margin-left:auto" id="mReason">—</span>
+  </div>
+</div>
+
+<!-- METRICS -->
+<div class="metrics-grid" id="metricsGrid"></div>
+
+<!-- MAIN CHARTS -->
+<div class="charts-main">
+  <div class="chart-card">
+    <div class="chart-header">
+      <span class="chart-title">Power generation & load (W)</span>
+      <div class="chart-legend">
+        <span class="leg"><span class="leg-dot" style="background:var(--solar)"></span>Solar Ppv</span>
+        <span class="leg"><span class="leg-dot" style="background:var(--wind)"></span>Wind Pwind</span>
+        <span class="leg"><span class="leg-dash" style="border-color:var(--load)"></span>Load</span>
+      </div>
+    </div>
+    <div style="position:relative;height:200px"><canvas id="genChart" role="img" aria-label="Solar, wind and load power over 24 hours"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-header">
+      <span class="chart-title">FLC output signals (W)</span>
+      <div class="chart-legend">
+        <span class="leg"><span class="leg-dot" style="background:var(--bat)"></span>Pbat_ref</span>
+        <span class="leg"><span class="leg-dot" style="background:var(--grid)"></span>Pgrid_ref</span>
+      </div>
+    </div>
+    <div style="position:relative;height:200px"><canvas id="flcChart" role="img" aria-label="Battery and grid power references over 24 hours"></canvas></div>
+  </div>
+</div>
+
+<!-- SUB CHARTS -->
+<div class="charts-sub">
+  <div class="chart-card">
+    <div class="chart-header"><span class="chart-title">Battery SOC (%)</span></div>
+    <div style="position:relative;height:120px"><canvas id="socChart" role="img" aria-label="Battery state of charge"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-header"><span class="chart-title">DC bus voltage (V)</span></div>
+    <div style="position:relative;height:120px"><canvas id="vbusChart" role="img" aria-label="DC bus voltage"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-header"><span class="chart-title">Power balance (W)</span></div>
+    <div style="position:relative;height:120px"><canvas id="balChart" role="img" aria-label="Net power balance"></canvas></div>
+  </div>
+</div>
+
+<!-- POWER FLOW DIAGRAM -->
+<div class="flow-panel">
+  <div class="panel-title">Real-time power flow</div>
+  <div class="flow-canvas-wrap">
+    <canvas id="flowCanvas" class="flow-canvas" role="img" aria-label="Power flow diagram between sources and DC bus"></canvas>
+  </div>
+</div>
+
+<!-- BOTTOM: RULE LIST + MF VIEWER -->
+<div class="bottom-grid">
+  <div class="flc-panel">
+    <div class="panel-title">Fuzzy rule base — active rule highlighted</div>
+    <div class="rule-list" id="ruleList"></div>
+  </div>
+  <div class="mf-panel">
+    <div class="panel-title">Input membership functions — current values</div>
+    <div class="mf-grid">
+      <div><div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">SOC (%)</div><div class="mf-chart-wrap"><canvas id="mfSOC" role="img" aria-label="SOC membership"></canvas></div></div>
+      <div><div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">Solar Ppv (W)</div><div class="mf-chart-wrap"><canvas id="mfPpv" role="img" aria-label="Ppv membership"></canvas></div></div>
+      <div><div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">Wind Pwind (W)</div><div class="mf-chart-wrap"><canvas id="mfPw" role="img" aria-label="Pwind membership"></canvas></div></div>
+      <div><div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">Load Pload (W)</div><div class="mf-chart-wrap"><canvas id="mfPl" role="img" aria-label="Pload membership"></canvas></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <p>JEEVIKA · SHAFRA MARIYAM I · VAISHNAVADHANUSH D · MONIKA B · SATHISH KUMAR V</p>
+  <p>Guide: Dr. D. Devaraj, Senior Professor · Dept. of EEE · KARE · 2025–26</p>
+  <p>215EXS3201 / EXSEL — Design-Build-Operate</p>
+</footer>
+</div>
+
+<script>
+/* ══════════════════════════════════════════
+   DATA
+══════════════════════════════════════════ */
+const LABELS = Array.from({length:24},(_,i)=>`${String(i).padStart(2,'0')}:00`);
+const IRR    = [0,0,0,0,0,0,40,150,320,520,700,850,950,1000,950,850,700,520,320,150,40,0,0,0];
+const WSPD   = [7,8,8,9,8,7,6,5,5,4,4,5,6,6,5,5,6,7,8,8,7,7,8,8];
+const LOAD   = [150,130,120,120,130,160,220,300,380,340,300,280,290,300,290,280,300,340,380,400,370,320,260,200];
+
+const PPV   = IRR.map(g=>+(g*0.001*0.95*12*44).toFixed(1));
+const PWIND = WSPD.map(v=>+(Math.pow(v,3)*0.35*0.92*0.95).toFixed(1));
+
+const TIME_DESCS = [
+  'Midnight — all sources dormant, minimal load','Early night — low load, wind active',
+  'Pre-dawn — minimum demand period','Pre-dawn — grid standby mode',
+  'Early morning — load beginning to rise','Dawn — household activity starts',
+  'Sunrise — solar beginning, moderate load','Morning ramp — solar rising fast',
+  'Mid-morning — solar strong, peak load building','Late morning — strong generation',
+  'Pre-noon — high solar + moderate wind','Near-noon — solar near peak',
+  'Midday — solar peak, surplus generation','Solar noon — maximum generation',
+  'Afternoon — generation still strong','Afternoon — solar starting to decline',
+  'Late afternoon — load and generation balanced','Evening onset — load rising',
+  'Evening peak — highest load demand','Peak load — grid import likely',
+  'Evening — load tapering, renewables low','Night — solar gone, wind active',
+  'Late night — wind charging battery','Near midnight — standby mode'
+];
+
+/* ══════════════════════════════════════════
+   FUZZY ENGINE
+══════════════════════════════════════════ */
+function trimf(x,a,b,c){ if(x<=a||x>=c)return 0; if(x<=b)return(x-a)/(b-a||1); return(c-x)/(c-b||1); }
+
+function mfSOC(v){  return {Low:trimf(v,0,0,40),  Med:trimf(v,30,50,70),  High:trimf(v,60,100,100)}; }
+function mfPpv(v){  return {Low:trimf(v,0,0,200),  Med:trimf(v,150,300,450),High:trimf(v,350,500,500)}; }
+function mfPw(v){   return {Low:trimf(v,0,0,120),  Med:trimf(v,80,150,220), High:trimf(v,180,300,300)}; }
+function mfPl(v){   return {Low:trimf(v,0,0,150),  Med:trimf(v,100,200,300),High:trimf(v,250,400,400)}; }
+
+const RULES = [
+  {soc:'Low', pv:'Low', pw:'Low', pl:'High', bat:'Idle',      grid:'Import', desc:'All sources low, high load → import from grid'},
+  {soc:'Med', pv:'Low', pw:'Low', pl:'High', bat:'Discharge', grid:'Import', desc:'Med SOC + high load → discharge + import'},
+  {soc:'High',pv:'Low', pw:'Low', pl:'High', bat:'Discharge', grid:'Zero',   desc:'High SOC handles high load alone'},
+  {soc:'Med', pv:'Med', pw:'Med', pl:'High', bat:'Discharge', grid:'Import', desc:'Partial renewables, high load → battery + grid'},
+  {soc:'Low', pv:'Low', pw:'Low', pl:'Med',  bat:'Idle',      grid:'Import', desc:'Low SOC, medium load → grid supplies'},
+  {soc:'Med', pv:'Low', pw:'Low', pl:'Med',  bat:'Discharge', grid:'Zero',   desc:'Med SOC discharges for medium load'},
+  {soc:'High',pv:'Low', pw:'Low', pl:'Med',  bat:'Idle',      grid:'Zero',   desc:'High SOC, low gen, medium load → standby'},
+  {soc:'Med', pv:'Med', pw:'Med', pl:'Med',  bat:'Idle',      grid:'Zero',   desc:'Renewables balanced with load'},
+  {soc:'Low', pv:'High',pw:'High',pl:'Low',  bat:'Charge',    grid:'Zero',   desc:'Excess renewables, low SOC → charge battery'},
+  {soc:'Med', pv:'High',pw:'High',pl:'Low',  bat:'Charge',    grid:'Export', desc:'Surplus → charge battery and export'},
+  {soc:'High',pv:'High',pw:'High',pl:'Low',  bat:'Charge',    grid:'Export', desc:'Max surplus → charge fully and export'},
+  {soc:'High',pv:'Med', pw:'Med', pl:'Low',  bat:'Charge',    grid:'Export', desc:'Good gen, low load, high SOC → export'},
+  {soc:'Med', pv:'Med', pw:'Med', pl:'Med',  bat:'Idle',      grid:'Zero',   desc:'Perfect balance → no action needed'},
+  {soc:'High',pv:'High',pw:'High',pl:'High', bat:'Charge',    grid:'Zero',   desc:'High everything → continue charging'},
+  {soc:'Low', pv:'Low', pw:'Low', pl:'Low',  bat:'Idle',      grid:'Zero',   desc:'All low → standby mode'},
+  {soc:'Med', pv:'High',pw:'High',pl:'Med',  bat:'Charge',    grid:'Export', desc:'Strong renewables → charge and export'},
+  {soc:'Low', pv:'Med', pw:'Low', pl:'Med',  bat:'Discharge', grid:'Import', desc:'Low SOC, partial gen → discharge + import'},
+  {soc:'High',pv:'Low', pw:'Med', pl:'Med',  bat:'Idle',      grid:'Zero',   desc:'Wind + high SOC → balanced standby'},
+];
+
+const MFB  = {Charge:-200, Idle:0, Discharge:200};
+const MFG  = {Export:-500, Zero:0, Import:500};
+
+function evalFLC(soc,ppv,pw,pl){
+  const mS=mfSOC(soc), mP=mfPpv(ppv), mW=mfPw(pw), mL=mfPl(pl);
+  let bN=0,bD=0,gN=0,gD=0, bestF=0, bestR=0;
+  RULES.forEach((r,i)=>{
+    const f=Math.min(mS[r.soc]||0, mP[r.pv]||0, mW[r.pw]||0, mL[r.pl]||0);
+    bN+=f*MFB[r.bat]; bD+=f; gN+=f*MFG[r.grid]; gD+=f;
+    if(f>bestF){bestF=f;bestR=i;}
+  });
+  return { pbat:bD>0?Math.round(bN/bD):0, pgrid:gD>0?Math.round(gN/gD):0, rule:bestR, fire:+bestF.toFixed(3) };
+}
+
+/* ══════════════════════════════════════════
+   PRE-COMPUTE 24-HR HISTORY
+══════════════════════════════════════════ */
+let SOC_H=[], VBUS_H=[], PBAT_H=[], PGRID_H=[], BAL_H=[];
+function computeAll(){
+  let soc=70;
+  SOC_H=[]; VBUS_H=[]; PBAT_H=[]; PGRID_H=[]; BAL_H=[];
+  for(let h=0;h<24;h++){
+    const r=evalFLC(soc,PPV[h],PWIND[h],LOAD[h]);
+    PBAT_H.push(r.pbat); PGRID_H.push(r.pgrid);
+    const bal=PPV[h]+PWIND[h]+r.pbat+r.pgrid-LOAD[h];
+    BAL_H.push(Math.round(bal));
+    const vbus=Math.min(340,Math.max(310,+(325+bal*0.015).toFixed(1)));
+    VBUS_H.push(vbus);
+    SOC_H.push(+soc.toFixed(2));
+    soc=Math.min(100,Math.max(0,soc - r.pbat*0.002));
+  }
+}
+computeAll();
+
+/* ══════════════════════════════════════════
+   METRICS
+══════════════════════════════════════════ */
+const METRIC_DEFS = [
+  {id:'ppv',   label:'Solar Power',   unit:'W',  color:'#f6ad55', icon:'☀',  maxVal:500},
+  {id:'pw',    label:'Wind Power',    unit:'W',  color:'#63b3ed', icon:'💨', maxVal:400},
+  {id:'load',  label:'Load Demand',   unit:'W',  color:'#fc8181', icon:'🏠', maxVal:400},
+  {id:'pbat',  label:'Pbat_ref',      unit:'W',  color:'#68d391', icon:'🔋', maxVal:200, signed:true},
+  {id:'pgrid', label:'Pgrid_ref',     unit:'W',  color:'#b794f4', icon:'⚡', maxVal:500, signed:true},
+  {id:'soc',   label:'Battery SOC',   unit:'%',  color:'#68d391', icon:'📊', maxVal:100},
+  {id:'vbus',  label:'DC Bus V',      unit:'V',  color:'#4facfe', icon:'〰', maxVal:340, minVal:310},
+];
+const mg=document.getElementById('metricsGrid');
+METRIC_DEFS.forEach(m=>{
+  mg.innerHTML+=`<div class="metric-card" style="--mc-color:${m.color}">
+    <span class="metric-icon">${m.icon}</span>
+    <div class="metric-label">${m.label}</div>
+    <div class="metric-value" id="mv-${m.id}">—</div>
+    <div class="metric-unit">${m.unit}</div>
+    <div class="metric-bar"><div class="metric-bar-fill" id="mb-${m.id}" style="width:0%"></div></div>
+  </div>`;
+});
+
+/* ══════════════════════════════════════════
+   RULE LIST
+══════════════════════════════════════════ */
+const rl=document.getElementById('ruleList');
+RULES.forEach((r,i)=>{
+  rl.innerHTML+=`<div class="rule-item" id="rule-${i}">
+    <span class="rule-num">R${String(i+1).padStart(2,'0')}</span>
+    <div style="flex:1">
+      <div class="rule-text">${r.desc}</div>
+      <div class="rule-out" style="color:var(--bat)">Bat: ${r.bat}</div>
+      <div class="rule-out" style="color:var(--grid)">Grid: ${r.grid}</div>
+      <div class="fire-bar" id="fb-${i}" style="width:0%"></div>
+    </div>
+  </div>`;
+});
+
+/* ══════════════════════════════════════════
+   CHARTS
+══════════════════════════════════════════ */
+const THEME = {
+  grid: 'rgba(255,255,255,0.05)',
+  tick: { color:'#475569', font:{size:10, family:'JetBrains Mono'} },
+  line: { color:'rgba(255,255,255,0.06)' }
+};
+function baseOpts(yMin, yMax, yLabel){
+  return {
+    responsive:true, maintainAspectRatio:false, animation:{duration:0},
+    plugins:{legend:{display:false}, tooltip:{
+      backgroundColor:'#1a2540', borderColor:'rgba(79,172,254,0.3)', borderWidth:1,
+      titleFont:{family:'JetBrains Mono',size:11}, bodyFont:{family:'JetBrains Mono',size:11},
+      titleColor:'#94a3b8', bodyColor:'#e2e8f0', padding:10
+    }},
+    scales:{
+      x:{ ticks:{...THEME.tick, maxTicksLimit:8, autoSkip:true}, grid:{color:THEME.grid} },
+      y:{ min:yMin, max:yMax, ticks:{...THEME.tick}, grid:{color:THEME.grid},
+          title:{display:!!yLabel, text:yLabel||'', color:'#475569', font:{size:10}} }
+    }
+  };
+}
+function mkLine(id,ds,yMin,yMax,yL){
+  return new Chart(document.getElementById(id),{type:'line',data:{labels:LABELS,datasets:ds},options:baseOpts(yMin,yMax,yL)});
+}
+
+let genC, flcC, socC, vbusC, balC;
+let mfCharts={};
+
+function initCharts(){
+  genC=mkLine('genChart',[
+    {label:'Solar',data:[...PPV],  borderColor:'#f6ad55',bg:'rgba(246,173,85,0.10)',  borderWidth:2,pointRadius:0,fill:true,tension:0.35},
+    {label:'Wind', data:[...PWIND],borderColor:'#63b3ed',bg:'rgba(99,179,237,0.10)',  borderWidth:2,pointRadius:0,fill:true,tension:0.35},
+    {label:'Load', data:[...LOAD], borderColor:'#fc8181',bg:'transparent',            borderWidth:2,pointRadius:0,borderDash:[6,3],tension:0.35},
+  ],0,800);
+  genC.data.datasets.forEach(ds=>{ ds.backgroundColor=ds.bg||ds.backgroundColor; });
+
+  flcC=mkLine('flcChart',[
+    {label:'Pbat_ref', data:[...PBAT_H], borderColor:'#68d391',backgroundColor:'rgba(104,211,145,0.08)',borderWidth:2,pointRadius:0,fill:true,tension:0.35},
+    {label:'Pgrid_ref',data:[...PGRID_H],borderColor:'#b794f4',backgroundColor:'rgba(183,148,244,0.08)',borderWidth:2,pointRadius:0,fill:true,tension:0.35},
+  ],-550,550);
+
+  socC=mkLine('socChart',[
+    {label:'SOC',data:[...SOC_H],borderColor:'#68d391',backgroundColor:'rgba(104,211,145,0.12)',borderWidth:2,pointRadius:0,fill:true,tension:0.35},
+  ],65,75);
+
+  vbusC=mkLine('vbusChart',[
+    {label:'Vbus',data:[...VBUS_H],borderColor:'#4facfe',backgroundColor:'rgba(79,172,254,0.08)',borderWidth:2,pointRadius:0,fill:true,tension:0.35},
+  ],308,342);
+
+  balC=mkLine('balChart',[
+    {label:'Balance',data:[...BAL_H],borderColor:'#f6ad55',backgroundColor:'rgba(246,173,85,0.10)',borderWidth:2,pointRadius:0,fill:true,tension:0.35},
+  ],-600,800);
+
+  initMFCharts();
+}
+
+function initMFCharts(){
+  const MF_DEFS={
+    mfSOC:  {range:[0,100],mf:mfSOC,  colors:['#fc8181','#f6ad55','#68d391']},
+    mfPpv:  {range:[0,500],mf:mfPpv,  colors:['#fc8181','#f6ad55','#68d391']},
+    mfPw:   {range:[0,300],mf:mfPw,   colors:['#fc8181','#f6ad55','#68d391']},
+    mfPl:   {range:[0,400],mf:mfPl,   colors:['#fc8181','#f6ad55','#68d391']},
+  };
+  Object.entries(MF_DEFS).forEach(([id,def])=>{
+    const n=60;
+    const xs=Array.from({length:n+1},(_,i)=>def.range[0]+(def.range[1]-def.range[0])*i/n);
+    const names=['Low','Med','High'];
+    mfCharts[id]=new Chart(document.getElementById(id),{type:'line',data:{
+      labels:xs.map(x=>Math.round(x)),
+      datasets:names.map((nm,j)=>({
+        label:nm,
+        data:xs.map(x=>def.mf(x)[nm]),
+        borderColor:def.colors[j],
+        backgroundColor:def.colors[j].replace(')',',0.1)').replace('rgb','rgba'),
+        borderWidth:1.5,pointRadius:0,fill:false,tension:0
+      })).concat([{
+        label:'__cursor',
+        data:[],
+        borderColor:'rgba(255,255,255,0.5)',
+        borderWidth:1,
+        borderDash:[3,3],
+        pointRadius:0,fill:false,tension:0,
+        type:'line'
+      }])
+    },options:{
+      responsive:true,maintainAspectRatio:false,animation:{duration:0},
+      plugins:{legend:{display:false},tooltip:{enabled:false}},
+      scales:{
+        x:{ ticks:{color:'#475569',font:{size:9,family:'JetBrains Mono'},maxTicksLimit:5,autoSkip:true}, grid:{color:'rgba(255,255,255,0.04)'} },
+        y:{ min:0, max:1, ticks:{color:'#475569',font:{size:9},maxTicksLimit:3}, grid:{color:'rgba(255,255,255,0.04)'} }
+      }
+    }});
+  });
+}
+
+/* ══════════════════════════════════════════
+   POWER FLOW CANVAS
+══════════════════════════════════════════ */
+function drawFlow(ctx, ppv, pw, load, pbat, pgrid, soc){
+  const W=ctx.canvas.width, H=ctx.canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  const cx=W/2, cy=H/2;
+  const nodes={
+    solar: {x:W*0.15, y:H*0.2,  label:'Solar PV',  val:`${ppv}W`,  color:'#f6ad55'},
+    wind:  {x:W*0.15, y:H*0.8,  label:'Wind Gen',  val:`${pw}W`,   color:'#63b3ed'},
+    bus:   {x:cx,     y:cy,      label:'DC Bus',    val:`${VBUS_H[curHour]||325}V`, color:'#4facfe'},
+    bat:   {x:W*0.82, y:H*0.2,  label:'Battery',   val:`SOC ${soc.toFixed(1)}%`, color:'#68d391'},
+    grid:  {x:W*0.82, y:H*0.8,  label:'AC Grid',   val:`${pgrid>0?'+':''}${pgrid}W`, color:'#b794f4'},
+    load:  {x:cx,     y:H*0.88, label:'Load',      val:`${load}W`, color:'#fc8181'},
+  };
+
+  function flowColor(val){ return val>5?'#68d391': val<-5?'#fc8181':'#475569'; }
+  function drawArrow(x1,y1,x2,y2,val,lbl){
+    if(Math.abs(val)<1) return;
+    const col=flowColor(val);
+    const dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy);
+    const ux=dx/len,uy=dy/len;
+    const pad=32;
+    const sx=x1+ux*pad, sy=y1+uy*pad;
+    const ex=x2-ux*pad, ey=y2-uy*pad;
+    const w=Math.min(4, 1+Math.abs(val)/150);
+    ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(ex,ey);
+    ctx.strokeStyle=col; ctx.lineWidth=w; ctx.setLineDash([]);
+    ctx.globalAlpha=0.8; ctx.stroke(); ctx.globalAlpha=1;
+    const hx=ex-ux*8, hy=ey-uy*8;
+    const px=-uy*5, py=ux*5;
+    ctx.beginPath(); ctx.moveTo(ex,ey); ctx.lineTo(hx+px,hy+py); ctx.lineTo(hx-px,hy-py);
+    ctx.closePath(); ctx.fillStyle=col; ctx.fill();
+    const mx=(sx+ex)/2, my=(sy+ey)/2;
+    ctx.fillStyle=col; ctx.font='bold 10px JetBrains Mono';
+    ctx.textAlign='center';
+    ctx.fillText(lbl||`${Math.round(Math.abs(val))}W`, mx, my-6);
+  }
+
+  drawArrow(nodes.solar.x,nodes.solar.y,nodes.bus.x,nodes.bus.y, ppv, `${ppv}W`);
+  drawArrow(nodes.wind.x, nodes.wind.y, nodes.bus.x,nodes.bus.y, pw,  `${pw}W`);
+  drawArrow(nodes.bus.x,  nodes.bus.y,  nodes.bat.x, nodes.bat.y, -pbat, pbat<0?`Chg ${Math.abs(pbat)}W`:pbat>0?`Dschg ${pbat}W`:'0W');
+  drawArrow(nodes.bus.x,  nodes.bus.y,  nodes.grid.x,nodes.grid.y, pgrid, pgrid<0?`Exp ${Math.abs(pgrid)}W`:pgrid>0?`Imp ${pgrid}W`:'0W');
+  drawArrow(nodes.bus.x,  nodes.bus.y,  nodes.load.x,nodes.load.y, load, `${load}W`);
+
+  Object.values(nodes).forEach(n=>{
+    ctx.beginPath();
+    ctx.arc(n.x,n.y,28,0,Math.PI*2);
+    ctx.fillStyle='#0f1729';
+    ctx.fill();
+    ctx.strokeStyle=n.color;
+    ctx.lineWidth=1.5;
+    ctx.stroke();
+    ctx.fillStyle=n.color;
+    ctx.font='500 10px Inter';
+    ctx.textAlign='center';
+    ctx.fillText(n.label,n.x,n.y-4);
+    ctx.font='10px JetBrains Mono';
+    ctx.fillStyle='#94a3b8';
+    ctx.fillText(n.val,n.x,n.y+10);
+  });
+}
+
+/* ══════════════════════════════════════════
+   UPDATE UI
+══════════════════════════════════════════ */
+let curHour=8;
+
+function setHour(h){
+  curHour=h;
+  document.getElementById('timeSlider').style.setProperty('--pct',(h/23*100)+'%');
+  document.getElementById('timeSlider').value=h;
+  document.getElementById('timeDisp').textContent=LABELS[h];
+  document.getElementById('timeDesc').textContent=TIME_DESCS[h];
+
+  const flc=evalFLC(SOC_H[h]||70, PPV[h], PWIND[h], LOAD[h]);
+  const pbat=PBAT_H[h], pgrid=PGRID_H[h], soc=SOC_H[h]||70;
+
+  // metrics
+  const vals={ppv:PPV[h], pw:PWIND[h], load:LOAD[h], pbat, pgrid, soc:+soc.toFixed(1), vbus:VBUS_H[h]||325};
+  METRIC_DEFS.forEach(m=>{
+    const v=vals[m.id];
+    document.getElementById(`mv-${m.id}`).textContent=(m.signed&&v>0?'+':'')+v;
+    const pct=m.signed? (Math.abs(v)/m.maxVal*100) : ((v-(m.minVal||0))/(m.maxVal-(m.minVal||0))*100);
+    document.getElementById(`mb-${m.id}`).style.width=Math.min(100,Math.max(0,pct))+'%';
+  });
+
+  // mode banner
+  const batLabel  = pbat<-20?'Charging': pbat>20?'Discharging':'Standby';
+  const gridLabel = pgrid<-20?'Exporting': pgrid>20?'Importing':'Zero exchange';
+  const batColor  = pbat<-20?'rgba(104,211,145,0.2)': pbat>20?'rgba(252,129,129,0.2)':'rgba(71,85,105,0.3)';
+  const gridColor = pgrid<-20?'rgba(99,179,237,0.2)': pgrid>20?'rgba(246,173,85,0.2)':'rgba(71,85,105,0.3)';
+  const batTextC  = pbat<-20?'#68d391': pbat>20?'#fc8181':'#64748b';
+  const gridTextC = pgrid<-20?'#63b3ed': pgrid>20?'#f6ad55':'#64748b';
+  document.getElementById('mBat').textContent='Battery: '+batLabel;
+  document.getElementById('mBat').style.cssText=`background:${batColor};color:${batTextC};padding:3px 10px;border-radius:20px;font-family:var(--mono);font-size:11px;font-weight:500`;
+  document.getElementById('mGrid').textContent='Grid: '+gridLabel;
+  document.getElementById('mGrid').style.cssText=`background:${gridColor};color:${gridTextC};padding:3px 10px;border-radius:20px;font-family:var(--mono);font-size:11px;font-weight:500`;
+  document.getElementById('mReason').textContent=RULES[flc.rule].desc;
+
+  // rule list
+  RULES.forEach((_,i)=>{
+    const el=document.getElementById(`rule-${i}`);
+    el.classList.toggle('fired',i===flc.rule);
+    const f_val=evalRuleFire(i,soc,PPV[h],PWIND[h],LOAD[h]);
+    document.getElementById(`fb-${i}`).style.width=(f_val*100).toFixed(1)+'%';
+  });
+  document.getElementById(`rule-${flc.rule}`).scrollIntoView({block:'nearest',behavior:'smooth'});
+
+  // chart cursors
+  [genC,flcC,socC,vbusC,balC].forEach(c=>{
+    if(!c)return;
+    c.data.datasets.forEach(ds=>{
+      ds.pointRadius=ds.data.map((_,i)=>i===h?5:0);
+      ds.pointBackgroundColor=ds.borderColor;
+    });
+    c.update('none');
+  });
+
+  // MF charts cursor
+  const mfVals={mfSOC:soc,mfPpv:PPV[h],mfPw:PWIND[h],mfPl:LOAD[h]};
+  const mfRanges={mfSOC:[0,100],mfPpv:[0,500],mfPw:[0,300],mfPl:[0,400]};
+  Object.entries(mfCharts).forEach(([id,c])=>{
+    if(!c)return;
+    const val=mfVals[id], range=mfRanges[id], n=60;
+    const xs=Array.from({length:n+1},(_,i)=>range[0]+(range[1]-range[0])*i/n);
+    const xi=xs.findIndex(x=>x>=val);
+    c.data.datasets[3].data=xs.map((_,i)=>i===xi?1:null);
+    c.update('none');
+  });
+
+  // power flow
+  const fc=document.getElementById('flowCanvas');
+  const ctx=fc.getContext('2d');
+  fc.width=fc.offsetWidth*devicePixelRatio;
+  fc.height=fc.offsetHeight*devicePixelRatio;
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  fc.style.width='100%';
+  fc.style.height='180px';
+  drawFlow(ctx, PPV[h], PWIND[h], LOAD[h], pbat, pgrid, soc);
+}
+
+function evalRuleFire(i,soc,ppv,pw,pl){
+  const mS=mfSOC(soc), mP=mfPpv(ppv), mW=mfPw(pw), mL=mfPl(pl);
+  const r=RULES[i];
+  return Math.min(mS[r.soc]||0, mP[r.pv]||0, mW[r.pw]||0, mL[r.pl]||0);
+}
+
+/* ══════════════════════════════════════════
+   PLAYBACK
+══════════════════════════════════════════ */
+let playing=false, timer=null;
+function togglePlay(){
+  playing=!playing;
+  const btn=document.getElementById('btnPlay');
+  if(playing){
+    btn.classList.add('play-active');
+    document.getElementById('playIcon').innerHTML='<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>';
+    document.getElementById('playLabel').textContent='Pause';
+    const speed=+document.getElementById('speedSel').value;
+    timer=setInterval(()=>{
+      curHour=(curHour+1)%24;
+      setHour(curHour);
+      if(curHour===23){ clearInterval(timer); playing=false; btn.classList.remove('play-active');
+        document.getElementById('playIcon').innerHTML='<path d="M8 5v14l11-7z"/>'; document.getElementById('playLabel').textContent='Play'; }
+    },speed);
+  } else {
+    clearInterval(timer);
+    btn.classList.remove('play-active');
+    document.getElementById('playIcon').innerHTML='<path d="M8 5v14l11-7z"/>';
+    document.getElementById('playLabel').textContent='Play';
+  }
+}
+function resetSim(){
+  clearInterval(timer); playing=false;
+  const btn=document.getElementById('btnPlay');
+  btn.classList.remove('play-active');
+  document.getElementById('playIcon').innerHTML='<path d="M8 5v14l11-7z"/>';
+  document.getElementById('playLabel').textContent='Play';
+  setHour(0);
+}
+
+/* speed change while playing */
+document.getElementById('speedSel').addEventListener('change',function(){
+  if(playing){ clearInterval(timer); togglePlay(); togglePlay(); }
+});
+
+/* ══════════════════════════════════════════
+   INIT
+══════════════════════════════════════════ */
+window.addEventListener('load',()=>{
+  initCharts();
+  setHour(8);
+});
+window.addEventListener('resize',()=>{ if(curHour!==null) setHour(curHour); });
+</script>
+</body>
+</html>
